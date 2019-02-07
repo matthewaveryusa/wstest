@@ -1,11 +1,10 @@
 const WebSocket = require('ws')
 
-const concurrency = 10000
+const concurrency = parseInt(process.argv[2],10)
 const path = 'ws://localhost:9090'
-const message_rate_ms = 1000
+const message_rate_ms = 300
 const variance = 0.2 //20%
-
-const test_time_ms = 30000
+const test_time_ms = 10000
 
 let gid = 0
 const outstanding_reqs = new Map()
@@ -29,13 +28,13 @@ for(let i = 0; i < concurrency; ++i) {
   const ws = new WebSocket(path)
   ws.id = i
   ws.end_of_test = false
-  ws.interval_ms  = (variance * Math.random() + 1) * message_rate_ms
+  ws.interval_ms  = (variance * Math.random()) * message_rate_ms + message_rate_ms*(1-variance/2)
   ws.count = 0
   clients.push(ws)
 
   ws.on('open', () => {
       send(ws)
-      const id = setInterval(() => {
+      ws.timeout_id = setInterval(() => {
         send(ws)
       }, ws.interval_ms)
 
@@ -66,9 +65,21 @@ for(let i = 0; i < concurrency; ++i) {
     }
   })
 
-  setTimeout(() => { 
+  ws.on('error', (err) => {
+    if(ws.end_of_test) {
+      return
+    }
     ws.end_of_test = true
-    clearTimeout(id)
+    clearTimeout(ws.timeout_id)
+    console.log(`${ws.id} failed with error: ${error}`)
+  })
+
+  setTimeout(() => { 
+    if(ws.end_of_test) {
+      return
+    }
+    ws.end_of_test = true
+    clearTimeout(ws.timeout_id)
     ws.close()
   }, test_time_ms)
 } 
